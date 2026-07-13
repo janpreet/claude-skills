@@ -1,0 +1,15 @@
+{
+  "name": "claude-skills",
+  "owner": { "name": "Janpreet Singh" },
+  "metadata": {
+    "description": "Janpreet's marketplace of small Claude Code plugins and skills",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "image-scrub",
+      "source": "./plugins/image-scrub",
+      "description": "Strips all metadata (EXIF, GPS, XMP, IPTC) from images before they leave in a git commit; includes an on-demand skill and an installable native git pre-commit hook."
+    }
+  ]
+}

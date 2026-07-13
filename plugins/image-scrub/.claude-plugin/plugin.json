@@ -1,0 +1,6 @@
+{
+  "name": "image-scrub",
+  "version": "1.0.0",
+  "description": "Strips all metadata (EXIF, GPS, XMP, IPTC, comments) from images before they leave in a git commit — automatically via a git-commit hook, plus a skill for on-demand scrubbing.",
+  "author": { "name": "Janpreet Singh" }
+}
