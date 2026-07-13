@@ -1,0 +1,90 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  structure:
+    name: structure & lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate marketplace / plugin / skill structure
+        run: python3 tests/validate_structure.py
+
+      - name: Syntax-check shell scripts
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            bash -n "$f" || fail=1
+          done < <(find . -name '*.sh')
+          exit $fail
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          find . -name '*.sh' -print0 | xargs -0 shellcheck -S warning
+
+      - name: Byte-compile Python
+        run: |
+          find . -name '*.py' -print0 | xargs -0 python3 -m py_compile
+
+  scrub-stdlib:
+    name: scrubber (stdlib path)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pillow (test-only)
+        run: pip install --quiet pillow
+
+      - name: Ensure exiftool is absent so the pure-Python path is exercised
+        run: |
+          if command -v exiftool >/dev/null; then
+            echo "exiftool unexpectedly present; this job tests the stdlib path" >&2
+            exit 1
+          fi
+
+      - name: Run functional tests
+        run: python3 plugins/image-scrub/tests/test_scrub.py
+
+  scrub-exiftool:
+    name: scrubber (exiftool path)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install exiftool + Pillow
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libimage-exiftool-perl
+          pip install --quiet pillow
+
+      - name: Scrub via exiftool and assert metadata is gone
+        run: |
+          python3 - <<'PY'
+          from PIL import Image
+          exif = Image.Exif()
+          exif[271] = "Apple"          # Make
+          exif[305] = "18.0"           # Software
+          exif[34853] = {1: "N", 2: (43.0, 30.0, 0.0)}  # GPSInfo
+          Image.new("RGB", (8, 8), (200, 40, 40)).save("t.jpg", "JPEG", exif=exif)
+          PY
+          echo "--- before ---"; exiftool -Make -Software -GPSLatitude t.jpg
+          python3 plugins/image-scrub/scripts/strip_image_metadata.py t.jpg
+          echo "--- after ---"
+          if exiftool -Make -Software -GPSLatitude t.jpg | grep -iE 'apple|18\.0|43'; then
+            echo "metadata survived exiftool scrub" >&2; exit 1
+          fi
+          python3 -c "from PIL import Image; Image.open('t.jpg').load(); print('still decodes')"
